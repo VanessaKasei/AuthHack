@@ -1,65 +1,77 @@
-const User = require("../models/User");
+const { readUsers, writeUsers } = require("../db/fileDb");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-// Register User
+// Register
 exports.register = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check if user exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ message: "Email already registered" });
+    // Read DB
+    let users = readUsers();
 
-    // Email format validation
+    // Check if exists
+    if (users.find((u) => u.email === email)) {
+      return res.status(400).json({ message: "Email already registered" });
+    }
+
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email format" });
     }
+
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 10);
 
-    // Create user
-    const user = await User.create({
+    // New user object
+    const newUser = {
+      id: Date.now().toString(), // Unique ID
       email,
-      password: hashedPassword,
-    });
+      password: hashed,
+    };
 
-    return res.status(201).json({
+    // Save user
+    users.push(newUser);
+    writeUsers(users);
+
+    res.status(201).json({
       message: "User registered successfully",
-      userId: user._id,
+      userId: newUser.id,
     });
   } catch (error) {
-    return res.status(500).json({ message: "Registration failed", error });
+    res.status(500).json({ message: "Registration failed", error });
   }
 };
 
-// Login User
+// Login
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user
-    const user = await User.findOne({ email });
-    if (!user)
-      return res.status(400).json({ message: "Invalid email or password" });
+    let users = readUsers();
 
-    // Compare passwords
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(400).json({ message: "Invalid email or password" });
-    // Create JWT
+    // Find user
+    const user = users.find((u) => u.email === email);
+    if (!user) return res.status(400).json({ message: "Invalid credentials" });
+
+    // Check password
+    const match = await bcrypt.compare(password, user.password);
+    if (!match)
+      return res.status(400).json({ message: "Invalid credentials" });
+
+    // Generate JWT
     const token = jwt.sign(
-      { id: user._id, email: user.email },
+      { id: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
+      { expiresIn: "1h" }
     );
-    return res.status(200).json({
+
+    res.status(200).json({
       message: "Login successful",
       token,
     });
   } catch (error) {
-    return res.status(500).json({ message: "Login failed", error });
+    res.status(500).json({ message: "Login failed", error });
   }
 };
