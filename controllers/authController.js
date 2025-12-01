@@ -12,6 +12,11 @@ exports.register = async (req, res) => {
     if (existingUser)
       return res.status(400).json({ message: "Email already registered" });
 
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -44,7 +49,12 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch)
       return res.status(400).json({ message: "Invalid email or password" });
-
+    // Create JWT
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
     return res.status(200).json({
       message: "Login successful",
       token,
